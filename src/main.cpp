@@ -1,123 +1,91 @@
 #include <iostream>
 #include <thread>
-#include <chrono>
 #include <memory>
-#include <sstream>
-#include <iomanip>
 #include <vector>
-#include <atomic>
+#include <string>
 
+// 引入各模組
 #include "daq/DaqDevice.hpp"
 #include "data/SafeQueue.hpp"
-#include "data/DataTypes.hpp"
-#include "comm/UdpSender.hpp"
-
-// CSV 轉換 helper 函式
-// 為了避免 UDP 封包過大，我們增加一個 maxPoints 參數
-// 對於 UI 繪圖，我們可能只需要看趨勢，不需要 50kHz 的每一個點
-std::string convertToCsv(const Data::RawDataChunk& chunk, size_t maxPoints = 50) {
-    std::stringstream ss;
-    
-    // 格式: DeviceName,Timestamp(ms),SampleRate,NumPoints,Data1,Data2...
-    auto now = std::chrono::time_point_cast<std::chrono::milliseconds>(chunk.timestamp);
-    auto epoch = now.time_since_epoch().count();
-
-    ss << chunk.deviceName << "," 
-       << epoch << "," 
-       << chunk.sampleRate << "," 
-       << chunk.data.size();
-
-    // 限制輸出的數據點數量，避免 UDP 封包爆掉
-    size_t pointsToSend = std::min(chunk.data.size(), maxPoints);
-    
-    // 設定小數點精度
-    ss << std::fixed << std::setprecision(4);
-
-    for (size_t i = 0; i < pointsToSend; ++i) {
-        ss << "," << chunk.data[i];
-    }
-    
-    return ss.str();
-}
-
-// 消費者執行緒：負責處理數據並發送 UDP
-void dataProcessingTask(std::shared_ptr<Data::SafeQueue<Data::RawDataChunk>> queue, 
-                        std::atomic<bool>& running) {
-    
-    // 建立 UDP Sender (Target: 本機 127.0.0.1, Port 5005)
-    Comm::UdpSender udpSender("127.0.0.1", 5005);
-    
-    if (!udpSender.initialize()) {
-        std::cerr << "[Consumer] UDP Initialization failed!" << std::endl;
-        return;
-    }
-
-    std::cout << "[Consumer] Processing thread started. Sending UDP to 127.0.0.1:5005" << std::endl;
-    
-    Data::RawDataChunk chunk;
-    while (running) {
-        if (queue->try_pop(chunk)) {
-            // 1. 轉成 CSV 格式 (限制最多傳送 20 點供 UI 繪圖)
-            std::string csvPacket = convertToCsv(chunk, 20);
-
-            // 2. 透過 UDP 發送
-            udpSender.send(csvPacket);
-
-            // (Debug 訊息，可註解掉)
-            std::cout << "[UDP Sent] " << chunk.deviceName << " Size: " << csvPacket.size() << " bytes" << std::endl;
-        } else {
-            // 避免空轉，稍微休眠
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-    }
-    std::cout << "[Consumer] Processing thread stopped." << std::endl;
-}
+#include "core/DataProcessor.hpp"
+#include "utils/ConfigLoader.hpp"
 
 int main()
 {
-    std::cout << "=== Distributed DAQ System (Multi-threaded) ===" << std::endl;
+    std::cout << "=== Distributed DAQ System (Configurable) ===" << std::endl;
 
-    // 1. 建立共用的資料佇列 (Thread-Safe)
-    auto sharedQueue = std::make_shared<Data::SafeQueue<Data::RawDataChunk>>();
-
-    // 2. 建立 DAQ 物件 (傳入 Queue)
-    std::string device1_name = "cDAQ1Mod1"; // NI-9232 (50kHz)
-    std::string device2_name = "cDAQ1Mod2"; // NI-9230 (10Hz)
-
-    // NI-9232: 2 channels, 50kHz (每 0.1秒產生 50點 * 2 = 100數據)
-    DAQ::DaqDevice daq9232(device1_name, 50.0, 2, sharedQueue);
-
-    // NI-9230: 3 channels, 10Hz (每 0.1秒產生 1點 * 3 = 30數據)
-    DAQ::DaqDevice daq9230(device2_name, 10.0, 3, sharedQueue);
-
-    // 3. 初始化
-    daq9232.initialize();
-    daq9230.initialize();
-
-    // 4. 啟動消費者執行緒
-    std::atomic<bool> isSystemRunning(true);
-    std::thread consumerThread(dataProcessingTask, sharedQueue, std::ref(isSystemRunning));
-
-    // 5. 啟動 DAQ (生產者)
-    daq9232.start();
-    daq9230.start();
-
-    // 讓系統跑 5 秒鐘
-    std::cout << "\nSystem running for 5 seconds..." << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(50));
-
-    // 6. 停止系統
-    std::cout << "\n--- Stopping System ---" << std::endl;
-    daq9232.stop();
-    daq9230.stop();
-
-    isSystemRunning = false;
-    if (consumerThread.joinable())
+    try
     {
-        consumerThread.join();
+        // --- 1. 讀取設定檔 ---
+        // 假設設定檔在執行檔同層，或上一層
+        // 在 VS Code 開發環境中，通常是 "${workspaceFolder}/DAQ_Settings.json"
+        // 編譯後執行檔在 build/，所以設定檔可能在 ../DAQ_Settings.json
+        std::string configPath = "../DAQ_Settings.json";
+
+        std::cout << "[System] Loading config from: " << configPath << std::endl;
+        auto systemConfig = Utils::ConfigLoader::load(configPath);
+
+        std::cout << "[System] Config Loaded. System Name: " << systemConfig.systemName << std::endl;
+
+        // --- 2. 建立資料管線 ---
+        auto sharedQueue = std::make_shared<Data::SafeQueue<Data::RawDataChunk>>();
+
+        // --- 3. 動態建立 DAQ 物件 (使用 vector 管理) ---
+        // 使用 unique_ptr 來管理物件生命週期
+        std::vector<std::unique_ptr<DAQ::DaqDevice>> daqDevices;
+
+        for (const auto &daqConfig : systemConfig.daqConfigs)
+        {
+            // 建立物件並存入 vector
+            // std::make_unique<Type>(constructor_args...)
+            daqDevices.push_back(std::make_unique<DAQ::DaqDevice>(daqConfig, sharedQueue));
+            std::cout << "[System] Device registered: " << daqConfig.deviceName
+                      << " [" << daqConfig.channelRange << "]" << std::endl;
+        }
+
+        // --- 4. 建立核心處理器 ---
+        Core::DataProcessor processor(sharedQueue, systemConfig.udpIp, systemConfig.udpPort);
+
+        // --- 5. 初始化所有裝置 ---
+        std::cout << "\n--- System Initialization ---" << std::endl;
+        for (auto &device : daqDevices)
+        {
+            device->initialize();
+        }
+
+        // --- 6. 啟動系統 ---
+        std::cout << "\n--- System Start ---" << std::endl;
+        processor.start(); // 先啟動後端
+
+        for (auto &device : daqDevices)
+        {
+            device->start();
+        }
+
+        // --- 7. 運行等待 ---
+        std::cout << "\nSystem is running... (Press 'Enter' to stop)" << std::endl;
+        std::cin.get();
+
+        // --- 8. 停止系統 ---
+        std::cout << "\n--- System Stop ---" << std::endl;
+
+        for (auto &device : daqDevices)
+        {
+            device->stop();
+        }
+        processor.stop();
+
+        // vector 清空時，unique_ptr 會自動釋放記憶體
+        daqDevices.clear();
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "[FATAL ERROR] " << e.what() << std::endl;
+        std::cout << "Press Enter to exit...";
+        std::cin.get();
+        return -1;
     }
 
-    std::cout << "=== End ===" << std::endl;
-    std::cin.get();
+    std::cout << "=== Bye ===" << std::endl;
     return 0;
 }

@@ -25,7 +25,7 @@ link_directories("${NI_DAQ_ROOT}/lib/msvc")
 # --- 來源檔案設定 ---
 # 為了保持乾淨，我們使用 file(GLOB...) 暫時抓取 src, src/daq 下所有 cpp，
 # 後續模組變多時，建議明確列出檔案。
-file(GLOB SOURCES "src/*.cpp" "src/*/*.cpp")
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 
 # --- 產生執行檔 ---
 add_executable(${PROJECT_NAME} ${SOURCES})

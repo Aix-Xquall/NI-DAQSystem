@@ -1,0 +1,25 @@
+{
+    "system_name": "Distributed_DAQ_System",
+    "udp_target_ip": "127.0.0.1",
+    "udp_target_port": 5005,
+    "daqs": [
+        {
+            "device_name": "cDAQ1Mod1",
+            "active": true,
+            "sample_rate": 500.0,
+            "channel_range": "ai0:1",
+            "channel_count": 2,
+            "min_voltage": -10.0,
+            "max_voltage": 10.0
+        },
+        {
+            "device_name": "cDAQ1Mod2",
+            "active": true,
+            "sample_rate": 100.0,
+            "channel_range": "ai0:2",
+            "channel_count": 3,
+            "min_voltage": -10.0,
+            "max_voltage": 10.0
+        }
+    ]
+}

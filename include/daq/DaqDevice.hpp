@@ -2,12 +2,13 @@
 
 #include <string>
 #include <vector>
-#include <thread>             // 新增
-#include <atomic>             // 新增
-#include <memory>             // 新增
-#include "NIDAQmx.h"          // 跨平台時，Linux 路徑可能不同，CMake 會處理 Include Path
-#include "data/DataTypes.hpp" // 新增
-#include "data/SafeQueue.hpp" // 新增
+#include <thread>                 // 新增
+#include <atomic>                 // 新增
+#include <memory>                 // 新增
+#include "NIDAQmx.h"              // 跨平台時，Linux 路徑可能不同，CMake 會處理 Include Path
+#include "data/DataTypes.hpp"     // 新增
+#include "data/SafeQueue.hpp"     // 新增
+#include "utils/ConfigLoader.hpp" // 引入 Config 定義
 
 namespace DAQ
 {
@@ -17,7 +18,7 @@ namespace DAQ
     public:
         // 建構子：傳入共用的 Queue 指標、裝置名稱 (如 "cDAQ1Mod1") 取樣率
 
-        DaqDevice(const std::string &deviceName, double sampleRate, int channelCount,
+        DaqDevice(const Utils::DaqConfig &config,
                   std::shared_ptr<Data::SafeQueue<Data::RawDataChunk>> queue);
         ~DaqDevice();
 
@@ -36,9 +37,9 @@ namespace DAQ
     private:
         // NI-DAQmx Task Handle (這是核心控制代碼)
         TaskHandle m_taskHandle;
-        std::string m_deviceName;
-        double m_sampleRate;
-        int m_channelCount;
+        // 儲存設定參數
+        Utils::DaqConfig m_config;
+
         bool m_isInitialized;
 
         // 執行緒控制

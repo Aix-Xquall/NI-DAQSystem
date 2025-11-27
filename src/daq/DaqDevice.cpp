@@ -5,15 +5,11 @@
 namespace DAQ
 {
 
-    DaqDevice::DaqDevice(const std::string &deviceName, double sampleRate, int channelCount,
+    // 建構子使用 Config 結構初始化
+    DaqDevice::DaqDevice(const Utils::DaqConfig &config,
                          std::shared_ptr<Data::SafeQueue<Data::RawDataChunk>> queue)
-        : m_deviceName(deviceName),
-          m_sampleRate(sampleRate),
-          m_channelCount(channelCount),
-          m_taskHandle(0),
-          m_isInitialized(false),
-          m_isRunning(false),
-          m_dataQueue(queue)
+        : m_config(config),
+          m_taskHandle(0), m_isInitialized(false), m_isRunning(false), m_dataQueue(queue)
     {
     }
 
@@ -31,7 +27,8 @@ namespace DAQ
         if (m_isInitialized)
             return true;
 
-        std::cout << "[DAQ] Initializing " << m_deviceName << " at " << m_sampleRate << " Hz..." << std::endl;
+        std::cout << "[DAQ] Initializing " << m_config.deviceName
+                  << " (Rate: " << m_config.sampleRate << ", Range: " << m_config.channelRange << ")..." << std::endl;
 
         // 1. 建立 Task
         // 空字串代表讓 NI 自動產生 Task Name，避免衝突
@@ -46,11 +43,13 @@ namespace DAQ
         // 語法範例: "cDAQ1Mod1/ai0:1" 代表該模組的 ai0 到 ai1
         // 為了通用性，我們這邊先簡單組合成 "Device/ai0:N-1"
         // 實際專案中可能需要更靈活的通道設定字串
-        std::string channelString = m_deviceName + "/ai0:" + std::to_string(m_channelCount - 1);
+        std::string fullChannelPath = m_config.deviceName + "/" + m_config.channelRange;
 
         // 設定範圍 -10V 到 10V (NI-9232/9230 通用範圍，可依需求調整)
-        error = DAQmxCreateAIVoltageChan(m_taskHandle, channelString.c_str(), "",
-                                         DAQmx_Val_Cfg_Default, -10.0, 10.0, DAQmx_Val_Volts, NULL);
+        error = DAQmxCreateAIVoltageChan(m_taskHandle, fullChannelPath.c_str(), "",
+                                         DAQmx_Val_Cfg_Default,
+                                         m_config.minVoltage, m_config.maxVoltage,
+                                         DAQmx_Val_Volts, NULL);
         if (error != 0)
         {
             checkError(error);
@@ -60,10 +59,10 @@ namespace DAQ
         // 3. 設定取樣時脈 (Timing)
         // DAQmx_Val_ContSamps: 連續取樣模式
         // bufferSize 設定為取樣率的 10 倍 (經驗法則，避免 Overflow)
-        uInt64 samplesPerChan = (uInt64)m_sampleRate * 10;
+        uInt64 samplesPerChanBuffer = (uInt64)m_config.sampleRate * 10; // Buffer 10倍
 
-        error = DAQmxCfgSampClkTiming(m_taskHandle, "", m_sampleRate, DAQmx_Val_Rising,
-                                      DAQmx_Val_ContSamps, samplesPerChan);
+        error = DAQmxCfgSampClkTiming(m_taskHandle, "", m_config.sampleRate, DAQmx_Val_Rising,
+                                      DAQmx_Val_ContSamps, samplesPerChanBuffer);
         if (error != 0)
         {
             checkError(error);
@@ -71,7 +70,7 @@ namespace DAQ
         }
 
         m_isInitialized = true;
-        std::cout << "[DAQ] " << m_deviceName << " Initialized Successfully." << std::endl;
+        std::cout << fullChannelPath << " Initialized Successfully." << std::endl;
         return true;
     }
 
@@ -93,7 +92,7 @@ namespace DAQ
         m_isRunning = true;
         m_workerThread = std::thread(&DaqDevice::readLoop, this);
 
-        std::cout << "[DAQ] " << m_deviceName << " Started." << std::endl;
+        std::cout << m_config.deviceName << " Started." << std::endl;
         return true;
     }
 
@@ -102,14 +101,18 @@ namespace DAQ
         if (!m_isRunning)
             return true;
 
-        m_isRunning = false; // 通知 thread 結束迴圈
+        m_isRunning = false;
+        if (m_workerThread.joinable())
+        {
+            m_workerThread.join();
+        }
 
         if (m_taskHandle != 0)
         {
             DAQmxStopTask(m_taskHandle);
         }
 
-        std::cout << "[DAQ] " << m_deviceName << " Stopped." << std::endl;
+        std::cout << "[DAQ] " << m_config.deviceName << " Stopped." << std::endl;
         return true;
     }
 
@@ -123,12 +126,12 @@ namespace DAQ
         // 對於 50kHz，我們可能每 0.1秒讀一次 (5000點) 比較有效率
         // 對於 10Hz，可能每 1秒讀一次 (10點) 或每 0.1秒讀 (1點)
         // 這裡簡單設定為取樣率的 1/10 (即 100ms 的數據量)
-        int samplesPerRead = (int)(m_sampleRate / 10);
+        int samplesPerRead = (int)(m_config.sampleRate / 10);
         if (samplesPerRead < 1)
             samplesPerRead = 1;
 
         // 緩衝區大小 = 樣本數 * 通道數
-        std::vector<double> buffer(samplesPerRead * m_channelCount);
+        std::vector<double> buffer(samplesPerRead * m_config.channelCount);
 
         while (m_isRunning)
         {
@@ -151,12 +154,12 @@ namespace DAQ
             {
                 // 讀取成功，封裝數據
                 Data::RawDataChunk chunk;
-                chunk.deviceName = m_deviceName;
+                chunk.deviceName = m_config.deviceName; // 這裡也可以加上 channelRange 做區分
                 chunk.timestamp = std::chrono::system_clock::now();
                 chunk.data = buffer; // 這裡會發生一次 copy，在功能驗證階段可接受
-                chunk.channelCount = m_channelCount;
+                chunk.channelCount = m_config.channelCount;
                 chunk.samplesPerChannel = readSamples;
-                chunk.sampleRate = m_sampleRate;
+                chunk.sampleRate = m_config.sampleRate;
 
                 // 推送到佇列 (Thread-Safe)
                 if (m_dataQueue)
@@ -169,7 +172,7 @@ namespace DAQ
 
     std::string DaqDevice::getName() const
     {
-        return m_deviceName;
+        return m_config.deviceName;
     }
 
     void DaqDevice::checkError(int32 error)
@@ -178,7 +181,7 @@ namespace DAQ
         {
             char errBuff[2048] = {'\0'};
             DAQmxGetExtendedErrorInfo(errBuff, 2048);
-            std::cerr << "[DAQ ERROR] Device: " << m_deviceName << " Code: " << error << "\n"
+            std::cerr << "[DAQ ERROR] Device: " << m_config.deviceName << " Code: " << error << "\n"
                       << "Message: " << errBuff << std::endl;
         }
     }
