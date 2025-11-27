@@ -110,6 +110,7 @@ namespace DAQ
         if (m_taskHandle != 0)
         {
             DAQmxStopTask(m_taskHandle);
+            DAQmxClearTask(m_taskHandle);
         }
 
         std::cout << "[DAQ] " << m_config.deviceName << " Stopped." << std::endl;

@@ -22,18 +22,13 @@ namespace Utils
            << chunk.channelCount << "," // <--- 新增這行
            << chunk.data.size();
 
-        // 限制傳送點數 (UI 顯示用)
-        // 注意：如果是多通道，maxPoints 最好是 channelCount 的倍數，以免切到一半
-        // 這裡做個簡單處理：確保傳送的點數能被通道數整除
-        size_t effectiveMax = maxPoints;
-        if (chunk.channelCount > 0)
-        {
-            effectiveMax = (maxPoints / chunk.channelCount) * chunk.channelCount;
-        }
-        if (effectiveMax == 0)
-            effectiveMax = chunk.channelCount; // 至少傳一組
+        // 為了確保 UI 繪圖時數據是對齊的，我們確保傳送的點數是 channelCount 的倍數
+        // 例如：若有 3 通道，我們不想只傳 4 個點 (ch0, ch1, ch2, ch0)，這樣第二組數據不完整
+        size_t safeMaxPoints = (maxPoints / chunk.channelCount) * chunk.channelCount;
+        if (safeMaxPoints == 0 && maxPoints > 0)
+            safeMaxPoints = chunk.channelCount; // 至少傳一組
 
-        size_t pointsToSend = std::min(chunk.data.size(), effectiveMax);
+        size_t pointsToSend = std::min(chunk.data.size(), safeMaxPoints);
 
         ss << std::fixed << std::setprecision(4);
 

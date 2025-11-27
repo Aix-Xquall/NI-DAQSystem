@@ -4,10 +4,19 @@
     "udp_target_port": 5005,
     "daqs": [
         {
+            "device_name": "cDAQ1Mod3",
+            "active": true,
+            "sample_rate": 120.0,
+            "channel_range": "ai0:3",
+            "channel_count": 4,
+            "min_voltage": -5.0,
+            "max_voltage": 5.0
+        },
+        {
             "device_name": "cDAQ1Mod1",
             "active": true,
             "sample_rate": 500.0,
-            "channel_range": "ai0:1",
+            "channel_range": "ai1:2",
             "channel_count": 2,
             "min_voltage": -10.0,
             "max_voltage": 10.0

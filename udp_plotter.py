@@ -1,96 +1,77 @@
 import socket
 import matplotlib.pyplot as plt
-import numpy as np
+import numpy as np # 需要 numpy 來處理矩陣
 from collections import deque
-import time
 
-# --- 設定 ---
+# 設定
 UDP_IP = "127.0.0.1"
 UDP_PORT = 5005
-BUFFER_SIZE = 65535  # 加大 Buffer 以防封包變大
+BUFFER_SIZE = 65535 # 增加 Buffer 大小以應對多通道數據
 
-# --- 初始化 ---
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
-sock.setblocking(False) # 設定為非阻塞模式
-
 print(f"Listening on {UDP_IP}:{UDP_PORT}...")
+
+# 繪圖緩衝區字典 (key: device_name, value: data_queues)
+device_buffers = {} 
+colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k'] # 通道顏色池
 
 plt.ion()
 fig, ax = plt.subplots()
-ax.set_title("Real-time Distributed DAQ")
-ax.set_xlabel("Samples")
+ax.set_title("Real-time Distributed DAQ (Auto-Config)")
 ax.set_ylabel("Voltage (V)")
-ax.set_ylim(-11, 11)
 ax.grid(True)
 
-# 儲存繪圖物件的字典: { "DeviceName_ChIndex": LineObject }
-lines = {}
-# 儲存數據的字典: { "DeviceName_ChIndex": Deque }
-data_buffers = {}
-# 顏色庫
-colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
-
-print("Press Ctrl+C to stop.")
+# 儲存繪圖物件
+lines = {} # key: device_name_channel_index
 
 try:
     while True:
-        try:
-            data, addr = sock.recvfrom(BUFFER_SIZE)
-            raw_str = data.decode('utf-8')
-            parts = raw_str.split(',')
-            
-            # 解析 CSV (新格式)
-            # 0: Name, 1: Time, 2: Rate, 3: ChCount, 4: TotalPoints, 5...: Data
-            if len(parts) > 5:
-                dev_name = parts[0]
+        data, addr = sock.recvfrom(BUFFER_SIZE)
+        raw_str = data.decode('utf-8')
+        parts = raw_str.split(',')
+        
+        # 格式: DeviceName(0), Timestamp(1), Rate(2), ChannelCount(3), TotalPoints(4), Data(5...N)
+        if len(parts) > 5:
+            dev_name = parts[0]
+            try:
                 ch_count = int(parts[3])
+                data_vals = [float(x) for x in parts[5:]]
                 
-                # 解析數據部分
-                # 從 index 5 開始是數據
-                raw_values = [float(x) for x in parts[5:]]
+                # 初始化該裝置的繪圖線條 (如果第一次收到)
+                if dev_name not in device_buffers:
+                    device_buffers[dev_name] = [deque(maxlen=100) for _ in range(ch_count)]
+                    for i in range(ch_count):
+                        line_id = f"{dev_name}_ch{i}"
+                        line, = ax.plot([], [], label=line_id, color=colors[i % len(colors)])
+                        lines[line_id] = line
+                    ax.legend(loc='upper right')
+
+                # 解析交錯數據 (De-interleave)
+                # data_vals 排列為: ch0, ch1, ch2, ch0, ch1, ch2...
+                for i in range(len(data_vals)):
+                    ch_idx = i % ch_count # 計算這是第幾個通道
+                    val = data_vals[i]
+                    device_buffers[dev_name][ch_idx].append(val)
+
+                # 更新繪圖 (只更新這個裝置的線條)
+                for i in range(ch_count):
+                    line_id = f"{dev_name}_ch{i}"
+                    if line_id in lines:
+                        y_data = list(device_buffers[dev_name][i])
+                        lines[line_id].set_ydata(y_data)
+                        lines[line_id].set_xdata(range(len(y_data)))
                 
-                # 處理多通道數據 (Interleaved: ch0, ch1, ch2, ch0, ch1...)
-                for ch_idx in range(ch_count):
-                    # 產生唯一識別碼 (Key)
-                    key = f"{dev_name}_ch{ch_idx}"
-                    
-                    # 取出該通道的數據 (Slicing)
-                    # raw_values[ch_idx::ch_count] 代表從 ch_idx 開始，每隔 ch_count 取一個值
-                    ch_data = raw_values[ch_idx::ch_count]
-                    
-                    if not ch_data:
-                        continue
+                # 自動調整 Y 軸範圍 (可選)
+                ax.relim()
+                ax.autoscale_view(scalex=False, scaley=True)
+                
+                fig.canvas.flush_events()
 
-                    # 初始化線條與 Buffer (如果是第一次收到這個通道)
-                    if key not in lines:
-                        # 分配顏色 (簡單雜湊)
-                        color = colors[len(lines) % len(colors)]
-                        line, = ax.plot([], [], label=key, color=color, alpha=0.8)
-                        lines[key] = line
-                        data_buffers[key] = deque(maxlen=100) # 每個通道保留 100 點
-                        ax.legend(loc='upper right', fontsize='small')
-                    
-                    # 更新數據
-                    # 為了 UI 流暢，我們只取這包數據的第一點 (Downsampling)
-                    # 實際應用可根據需求全畫
-                    data_buffers[key].append(ch_data[0])
-                    
-                    # 更新圖表物件
-                    lines[key].set_ydata(list(data_buffers[key]))
-                    lines[key].set_xdata(range(len(data_buffers[key])))
-
-            # 繪圖更新 (控制更新率以免 UI 卡死)
-            fig.canvas.draw()
-            fig.canvas.flush_events()
-            
-        except BlockingIOError:
-            # 沒有數據時休息一下
-            time.sleep(0.01)
-        except Exception as e:
-            print(f"Error: {e}")
+            except ValueError as e:
+                print(f"Parse error: {e}")
 
 except KeyboardInterrupt:
-    print("\nStopped.")
+    print("Stopped")
 finally:
     sock.close()
