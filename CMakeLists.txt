@@ -16,8 +16,6 @@ include_directories("${NI_DAQ_ROOT}/include")
 
 # 讓編譯器找得到 include/ 資料夾內的標頭檔
 include_directories("${PROJECT_SOURCE_DIR}/include")
-#include_directories("${PROJECT_SOURCE_DIR}/include/daq")
-#include_directories("${PROJECT_SOURCE_DIR}/include/data")
 
 # 設定 Library 路徑
 # 注意：MinGW 32-bit 需連結 32-bit 的 NI Library
@@ -27,17 +25,26 @@ link_directories("${NI_DAQ_ROOT}/lib/msvc")
 # --- 來源檔案設定 ---
 # 為了保持乾淨，我們使用 file(GLOB...) 暫時抓取 src, src/daq 下所有 cpp，
 # 後續模組變多時，建議明確列出檔案。
-file(GLOB SOURCES "src/*.cpp" "src/daq/*.cpp")
+file(GLOB SOURCES "src/*.cpp" "src/*/*.cpp")
 
 # --- 產生執行檔 ---
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 # --- 連結 Library ---
-# GCC/MinGW 可以直接連結 MSVC 格式的 .lib 檔案 (如果是 C 介面)
-target_link_libraries(${PROJECT_NAME} 
-    PRIVATE 
-    "${NI_DAQ_ROOT}/lib/msvc/NIDAQmx.lib"
-)
+if(WIN32)
+    # Windows 需要連結 NI Library 和 Winsock (ws2_32)
+    target_link_libraries(${PROJECT_NAME} 
+        PRIVATE 
+        "${NI_DAQ_ROOT}/lib/msvc/NIDAQmx.lib"
+        ws2_32
+    )
+else()
+    # Linux 設定 (假設 NI Linux Driver 已安裝在標準路徑)
+    target_link_libraries(${PROJECT_NAME} 
+        PRIVATE 
+        nidaqmx
+    )
+endif()
 
 # --- 輸出訊息 (方便 Debug 路徑是否正確) ---
 message(STATUS "NI-DAQmx Root: ${NI_DAQ_ROOT}")
