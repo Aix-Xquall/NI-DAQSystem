@@ -78,6 +78,11 @@
         "xstring": "cpp",
         "xtr1common": "cpp",
         "xutility": "cpp",
-        "cstdarg": "cpp"
+        "cstdarg": "cpp",
+        "any": "cpp",
+        "codecvt": "cpp",
+        "map": "cpp",
+        "cinttypes": "cpp",
+        "valarray": "cpp"
     }
 }

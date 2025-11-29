@@ -1,43 +1,63 @@
 #include "utils/CsvFormatter.hpp"
 #include <sstream>
 #include <iomanip>
-#include <algorithm>
+#include <cmath> // for floor
 
-namespace Utils
-{
+namespace Utils {
 
-    std::string CsvFormatter::toCsv(const Data::RawDataChunk &chunk, size_t maxPoints)
-    {
+    std::string CsvFormatter::toCsv(const Data::RawDataChunk& chunk, size_t maxPoints) {
         std::stringstream ss;
-
+        
         // 時間戳記
         auto now = std::chrono::time_point_cast<std::chrono::milliseconds>(chunk.timestamp);
         auto epoch = now.time_since_epoch().count();
 
-        // [修改處] 新增 chunk.channelCount 欄位
-        // Header: DeviceName, Timestamp, SampleRate, ChannelCount, TotalPoints
-        ss << chunk.deviceName << ","
-           << epoch << ","
+        // 1. 計算原始數據中有多少組「完整掃描 (Scans)」
+        // chunk.data.size() 是所有通道數據的總和
+        // numScans 是時間軸上的點數
+        size_t numChannels = chunk.channelCount;
+        if (numChannels == 0) return ""; // 防呆
+
+        size_t totalScans = chunk.data.size() / numChannels;
+
+        // 2. 決定要輸出的 Scan 數量 (限制在 maxPoints 以內)
+        size_t scansToSend = std::min(totalScans, maxPoints);
+        
+        // 3. 計算步長 (Step)，實現均勻降頻
+        // 例如：有 5000 點，要取 20 點，步長 = 250
+        double step = 1.0;
+        if (scansToSend > 1) {
+            step = (double)(totalScans - 1) / (scansToSend - 1);
+        }
+
+        // Header: DeviceName, Timestamp, SampleRate, ChannelCount, TotalPoints(Payload)
+        // 這裡 TotalPoints 指的是我們即將發送的數據量 (scansToSend * numChannels)
+        ss << chunk.deviceName << "," 
+           << epoch << "," 
            << chunk.sampleRate << ","
-           << chunk.channelCount << "," // <--- 新增這行
-           << chunk.data.size();
-
-        // 為了確保 UI 繪圖時數據是對齊的，我們確保傳送的點數是 channelCount 的倍數
-        // 例如：若有 3 通道，我們不想只傳 4 個點 (ch0, ch1, ch2, ch0)，這樣第二組數據不完整
-        size_t safeMaxPoints = (maxPoints / chunk.channelCount) * chunk.channelCount;
-        if (safeMaxPoints == 0 && maxPoints > 0)
-            safeMaxPoints = chunk.channelCount; // 至少傳一組
-
-        size_t pointsToSend = std::min(chunk.data.size(), safeMaxPoints);
+           << numChannels << "," 
+           << (scansToSend * numChannels);
 
         ss << std::fixed << std::setprecision(4);
 
-        for (size_t i = 0; i < pointsToSend; ++i)
-        {
-            ss << "," << chunk.data[i];
-        }
+        // 4. 均勻抽取數據
+        for (size_t i = 0; i < scansToSend; ++i) {
+            // 計算目前要取的 Scan 索引 (0, step, 2*step...)
+            size_t currentScanIdx = (size_t)(i * step);
+            
+            // 防呆：確保不越界
+            if (currentScanIdx >= totalScans) currentScanIdx = totalScans - 1;
 
+            // 計算該 Scan 在平面陣列中的起始位置
+            size_t dataStartIndex = currentScanIdx * numChannels;
+
+            // 5. 複製該 Scan 的所有通道數據 (Ch0, Ch1, Ch2...)
+            // 這樣確保同一個時間點的所有通道數據都被送出
+            for (size_t ch = 0; ch < numChannels; ++ch) {
+                ss << "," << chunk.data[dataStartIndex + ch];
+            }
+        }
+        
         return ss.str();
     }
-
 }

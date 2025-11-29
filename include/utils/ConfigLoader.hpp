@@ -1,38 +1,53 @@
 #pragma once
-
 #include <string>
 #include <vector>
 
-namespace Utils
-{
+namespace Utils {
 
-    // 定義單一 DAQ 設定結構
-    struct DaqConfig
-    {
-        std::string deviceName;   // 裝置名稱 e.g., "cDAQ1Mod1"
-        bool active;              // 是否啟用
-        double sampleRate;        // 取樣率 e.g., 50000.0
-        std::string channelRange; // 通道範圍 e.g., "ai0:1"
-        int channelCount;         // 通道數量 e.g., 2
-        double minVoltage;        // 電壓下限 e.g., -10.0
-        double maxVoltage;        // 電壓上限 e.g., 10.0
+    struct IepeSettings {
+        double current;       // IEPE 電流 (A)
+        std::string coupling; // "AC" or "DC"
     };
 
-    // 定義系統整體設定結構
-    struct SystemConfig
-    {
+    struct StrainSettings {
+        double gageFactor;
+        double resistance;
+        double poissonRatio;
+        double excitationVal;
+    };
+
+    struct ChannelConfig {
+        std::string deviceName;    // 硬體位址: cDAQ1Mod1
+        std::string modelInfo;     // 識別資訊: NI-9232
+        std::string channelRange;  // ai0:1
+        std::string channelType;   // Voltage_IEPE, Strain_Bridge, Thermocouple_K
+        
+        bool active;               // [新增] 單一通道/模組啟用開關
+
+        double minVal;             // 依據類型不同，單位可能是 V, Strain, 或 DegC
+        double maxVal;
+
+        // 專用參數區
+        IepeSettings iepeSettings;
+        StrainSettings strainSettings;
+    };
+
+    struct TaskConfig {
+        std::string taskName;
+        bool active;               // Task 整體開關
+        double sampleRate;
+        std::vector<ChannelConfig> channels;
+    };
+
+    struct SystemConfig {
         std::string systemName;
         std::string udpIp;
         int udpPort;
-        std::vector<DaqConfig> daqConfigs;
+        std::vector<TaskConfig> taskConfigs;
     };
 
-    class ConfigLoader
-    {
+    class ConfigLoader {
     public:
-        // 靜態方法：讀取 JSON 並回傳 SystemConfig
-        // 若讀取失敗或格式錯誤，會拋出 std::runtime_error
-        static SystemConfig load(const std::string &filePath);
+        static SystemConfig load(const std::string& filePath);
     };
-
 }
