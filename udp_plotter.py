@@ -1,170 +1,261 @@
 import socket
-import matplotlib.pyplot as plt
-import numpy as np
-from collections import deque
+import json
 import time
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.widgets import RadioButtons
+from collections import deque
 
 # ================= 設定區 =================
+CONFIG_FILE = "DAQ_Settings.json"
 UDP_IP = "127.0.0.1"
 UDP_PORT = 5005
-BUFFER_SIZE = 65535      # 加大 Buffer 以接收長字串
-TIME_WINDOW = 5.0        # 顯示最近 5 秒的數據
-REFRESH_INTERVAL = 0.05  # 繪圖刷新間隔 (秒)，避免過度消耗 CPU
-
-# 定義任務名稱關鍵字對應的圖表位置 (Row Index)
-# 您的 Task Name 必須包含這些關鍵字
-TASK_MAPPING = {
-    "HighSpeed": 0,  # 第一列
-    "MediumSpeed": 1, # 第二列
-    "LowSpeed": 2    # 第三列
-}
+BUFFER_SIZE = 65536      # 64KB Buffer
+REFRESH_INTERVAL = 0.05  # 刷新率 20 FPS (降低 CPU 使用率)
+MAX_POINTS = 20000       # 加大緩衝區，確保能容納 10s 以上的數據
 # ==========================================
 
+class SystemMapper:
+    """
+    負責解析 JSON 設定檔，建立「UDP 封包數據」到「繪圖視窗」的映射關係。
+    """
+    def __init__(self, config_file):
+        self.plots_info = [] # 儲存 8 個 Slot 的標題資訊
+        self.task_map = {}   # { "TaskName": [ (SlotIndex, LineLabel), ... ] }
+        self.load_config(config_file)
+
+    def load_config(self, path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            print(f"[System] Loading Config: {config.get('system_name')}")
+            
+            # 1. 準備 8 個繪圖區的資訊 (依序對應 Slot 1~8)
+            slot_counter = 0
+            
+            # 2. 遍歷 Tasks
+            for task in config.get('tasks', []):
+                if not task.get('active', False):
+                    continue
+                
+                task_name = task['task_name']
+                self.task_map[task_name] = []
+                
+                # 3. 遍歷 Channels (Devices)
+                for ch in task.get('channels', []):
+                    if not ch.get('active', True):
+                        continue
+                    
+                    # 取得裝置資訊
+                    dev_name = ch['device_name']
+                    model_info = ch.get('model_info', dev_name)
+                    
+                    # 分配 Slot ID (假設 JSON 順序即為 Slot 順序)
+                    current_slot_id = slot_counter
+                    self.plots_info.append(f"Slot {current_slot_id+1}: {model_info}")
+                    slot_counter += 1
+                    
+                    # 解析通道數量 (例如 ai0:1 代表 2 個通道)
+                    range_str = ch['channel_range']
+                    if ':' in range_str:
+                        start, end = range_str.replace('ai', '').split(':')
+                        num_ch = int(end) - int(start) + 1
+                    else:
+                        num_ch = 1
+                    
+                    # 建立映射: 告訴程式這個 Task 接下來的 num_ch 個數據屬於 current_slot_id
+                    for i in range(num_ch):
+                        label = f"Ch{i}" 
+                        self.task_map[task_name].append((current_slot_id, label))
+            
+            print(f"[System] Configured {len(self.plots_info)} slots.")
+            
+        except Exception as e:
+            print(f"[Error] Config load failed: {e}")
+            sys.exit(1)
+
 class RealTimePlotter:
-    def __init__(self):
-        # 初始化 UDP Socket
+    def __init__(self, mapper):
+        self.mapper = mapper
+        self.running = True
+        self.time_window = 3.0 # 預設 3 秒
+        
+        # --- 1. 初始化 UDP ---
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((UDP_IP, UDP_PORT))
-        self.sock.setblocking(False) # 設定為非阻塞模式
-        print(f"Listening on {UDP_IP}:{UDP_PORT}...")
+        self.sock.setblocking(False) # 非阻塞模式
+        print(f"[UDP] Listening on {UDP_IP}:{UDP_PORT}...")
 
-        # 初始化繪圖視窗 (3 列 1 行)
-        plt.ion() # 開啟互動模式
-        self.fig, self.axes = plt.subplots(3, 1, figsize=(10, 12), sharex=False)
-        self.fig.canvas.manager.set_window_title('Distributed DAQ System Monitor')
+        # --- 2. 初始化資料結構 ---
+        # data_buffers[slot_id][ch_index] = deque()
+        self.data_buffers = []
+        # 儲存每個 Slot 的「有效取樣率」 (Effective Sample Rate)
+        self.slot_rates = {} 
         
-        # 設定標題與格式
-        titles = ["High Speed Task (50kHz)", "Medium Speed Task (5kHz)", "Low Speed Task (10Hz)"]
+        for _ in range(len(self.mapper.plots_info)):
+            self.data_buffers.append({}) # 每個 Slot 一個字典存放通道數據
+
+        # --- 3. 初始化 GUI ---
+        plt.ion()
+        # 建立 4x2 網格
+        self.fig, self.axes = plt.subplots(4, 2, figsize=(16, 10))
+        self.axes = self.axes.flatten()
+        
+        plt.subplots_adjust(left=0.08, bottom=0.05, right=0.98, top=0.90, wspace=0.15, hspace=0.4)
+        self.fig.canvas.manager.set_window_title('NI cDAQ-9189 Real-Time Monitor')
+
+        self.lines = {} # 儲存 Line2D 物件
+        
         for i, ax in enumerate(self.axes):
-            ax.set_title(titles[i])
-            ax.set_ylabel("Voltage / Unit")
-            ax.grid(True, linestyle='--', alpha=0.6)
-            ax.set_xlim(0, TIME_WINDOW)
-            
-        self.axes[2].set_xlabel("Time History (sec)")
+            if i < len(self.mapper.plots_info):
+                ax.set_title(self.mapper.plots_info[i], fontsize=9, fontweight='bold')
+                ax.grid(True, linestyle=':', alpha=0.6)
+                ax.set_xlim(0, self.time_window)
+                self.lines[i] = {}
+            else:
+                ax.axis('off')
 
-        # 資料緩衝區結構: 
-        # self.data_store[task_name][channel_index] = deque(...)
-        self.data_store = {} 
+        # --- 4. 加入控制項 (時間選擇) ---
+        ax_radio = plt.axes([0.02, 0.92, 0.15, 0.06], facecolor='#e6e6e6')
+        self.radio = RadioButtons(ax_radio, ('3s', '5s', '10s'), active=0)
+        self.radio.on_clicked(self.change_time_window)
         
-        # 線條物件快取: 
-        # self.lines[task_name][channel_index] = line_object
-        self.lines = {}
+        self.fig.canvas.mpl_connect('key_press_event', self.on_key)
+        self.fig.canvas.mpl_connect('close_event', self.on_close)
 
-        # 顏色池 (用於區分不同通道)
-        self.colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
+    def change_time_window(self, label):
+        """ 切換時間顯示範圍 """
+        self.time_window = float(label.replace('s', ''))
+        # 立即更新所有圖表的 X 軸範圍
+        for ax in self.axes:
+            if ax.get_visible():
+                ax.set_xlim(0, self.time_window)
+        print(f"[UI] Time window set to {self.time_window}s")
 
-    def parse_packet(self, raw_str):
-        """ 解析 CSV 封包 """
+    def parse_and_store(self, raw_data):
+        """ 解析 UDP 封包並分發數據 """
         try:
-            # 格式: Name, Timestamp, Rate, ChCount, TotalPoints, Data...
-            parts = raw_str.split(',')
-            if len(parts) < 6: return None
+            msg = raw_data.decode('utf-8').strip()
+            parts = msg.split(',')
+            if len(parts) < 6: return
 
-            name = parts[0]
-            # timestamp = int(parts[1]) # 暫時不用
-            rate = float(parts[2])
-            ch_count = int(parts[3])
-            # total_points = int(parts[4])
+            task_name = parts[0]
+            # rate = float(parts[2]) 
+            packet_ch_count = int(parts[3])
             data_values = [float(x) for x in parts[5:]]
 
-            return name, rate, ch_count, data_values
+            if task_name not in self.mapper.task_map: return
+            mapping = self.mapper.task_map[task_name]
+
+            # 計算 Scans (時間點數量)
+            num_scans = len(data_values) // packet_ch_count
+            if num_scans == 0: return
+
+            # === 關鍵修正：計算有效取樣率 ===
+            # C++ 每 0.1 秒發送一次封包。因此：有效率 = 此封包點數 * 10
+            # 這是唯一能正確對應真實時間的方法
+            effective_rate = num_scans * 10.0
+
+            for ch_idx in range(packet_ch_count):
+                if ch_idx >= len(mapping): break
+                
+                slot_id, label = mapping[ch_idx]
+                
+                # 更新該 Slot 的速率資訊
+                self.slot_rates[slot_id] = effective_rate
+
+                ch_data = data_values[ch_idx::packet_ch_count]
+                
+                if ch_idx not in self.data_buffers[slot_id]:
+                    self.data_buffers[slot_id][ch_idx] = deque(maxlen=MAX_POINTS)
+                
+                self.data_buffers[slot_id][ch_idx].extend(ch_data)
+
         except Exception as e:
-            print(f"Error parsing packet: {e}")
-            return None
+            pass
 
     def update(self):
-        try:
-            # 1. 讀取所有積壓在 Socket 的封包 (避免延遲)
-            while True:
-                try:
-                    data, _ = self.sock.recvfrom(BUFFER_SIZE)
-                    packet = self.parse_packet(data.decode('utf-8'))
-                    
-                    if packet:
-                        self.process_data(*packet)
-                except BlockingIOError:
-                    break # 已無資料
-        except KeyboardInterrupt:
-            return False
+        """ 主更新迴圈 """
+        # 1. 讀取 Socket 所有數據
+        while True:
+            try:
+                data, _ = self.sock.recvfrom(BUFFER_SIZE)
+                self.parse_and_store(data)
+            except BlockingIOError:
+                break
 
-        # 2. 更新圖表
-        self.draw_plots()
-        
-        # 3. 處理 GUI 事件
-        self.fig.canvas.flush_events()
-        return True
-
-    def process_data(self, name, rate, ch_count, data_values):
-        """ 將數據存入對應的 Buffer """
-        
-        # 若是新任務，初始化儲存空間
-        if name not in self.data_store:
-            # 計算 Buffer 長度: 時間視窗 * 取樣率 (但因為 UDP 是降樣傳輸的，這裡僅需估算顯示點數)
-            # 為了簡單，我們假設 UDP 每秒送約 1000 點 (10次 * 100點)
-            max_len = int(1000 * TIME_WINDOW) 
-            self.data_store[name] = [deque(maxlen=max_len) for _ in range(ch_count)]
-            self.lines[name] = [None] * ch_count
-
-        # 解交錯 (De-interleave) 並存入 Buffer
-        # 數據排列: ch0, ch1, ch2, ch0, ch1, ch2...
-        num_points = len(data_values) // ch_count
-        
-        for i in range(num_points):
-            for ch in range(ch_count):
-                val = data_values[i * ch_count + ch]
-                self.data_store[name][ch].append(val)
-
-    def draw_plots(self):
-        """ 繪製線條 """
-        for name, channels_data in self.data_store.items():
+        # 2. 更新繪圖
+        for slot_id, channels in enumerate(self.data_buffers):
+            if slot_id >= len(self.axes): break
+            ax = self.axes[slot_id]
             
-            # 決定要在哪一個 subplot 繪圖
-            ax_idx = -1
-            for key, idx in TASK_MAPPING.items():
-                if key in name:
-                    ax_idx = idx
-                    break
-            
-            if ax_idx == -1: continue # 找不到對應的圖表位置
+            # 取得該 Slot 的有效取樣率 (預設 10Hz 以防未收到數據)
+            eff_rate = self.slot_rates.get(slot_id, 10.0)
+            if eff_rate <= 0: eff_rate = 1.0
 
-            ax = self.axes[ax_idx]
-            
-            # 繪製每個通道
-            for ch_idx, data_deque in enumerate(channels_data):
+            # 計算當前視窗需要多少點
+            points_needed = int(self.time_window * eff_rate)
+
+            # 遍歷通道
+            for ch_idx, data_deque in channels.items():
                 if len(data_deque) < 2: continue
-
-                y_data = list(data_deque)
-                x_data = np.linspace(0, TIME_WINDOW, len(y_data)) # 簡單生成 X 軸 (0 ~ 5秒)
-
-                # 若線條尚未建立，則建立之
-                if self.lines[name][ch_idx] is None:
-                    line, = ax.plot(x_data, y_data, 
-                                    label=f"{name}-Ch{ch_idx}", 
-                                    color=self.colors[ch_idx % len(self.colors)],
-                                    linewidth=1.0)
-                    self.lines[name][ch_idx] = line
-                    ax.legend(loc='upper right', fontsize='small', framealpha=0.5)
+                
+                # === 關鍵修正：只取出對應時間長度的數據 ===
+                # 將 deque 轉為 list (這步在 Python 很快)
+                full_data = list(data_deque)
+                
+                # 根據需要的點數進行 Slice (切片)
+                # 如果緩衝區夠大，只取最後 points_needed 點
+                # 如果緩衝區不夠，就全取
+                if len(full_data) > points_needed:
+                    y_data = full_data[-points_needed:]
                 else:
-                    # 更新數據
-                    self.lines[name][ch_idx].set_ydata(y_data)
-                    self.lines[name][ch_idx].set_xdata(x_data)
+                    y_data = full_data
 
-            # 自動調整 Y 軸 (可選，若覺得跳動太快可註解掉)
-            # ax.relim()
-            # ax.autoscale_view(scalex=False, scaley=True)
+                # 生成 X 軸
+                # 讓數據靠右對齊 (最新的數據在 time_window)
+                # 時間長度 = 點數 / 速率
+                duration = len(y_data) / eff_rate
+                x_data = np.linspace(self.time_window - duration, self.time_window, len(y_data))
+
+                # 繪圖
+                if ch_idx not in self.lines[slot_id]:
+                    line, = ax.plot(x_data, y_data, linewidth=1.0, label=f"Ch{ch_idx}")
+                    self.lines[slot_id][ch_idx] = line
+                    ax.legend(loc='upper right', fontsize=6, framealpha=0.5)
+                else:
+                    self.lines[slot_id][ch_idx].set_data(x_data, y_data)
+            
+            # 限制自動縮放頻率或範圍
+            ax.relim()
+            ax.autoscale_view(scalex=False, scaley=True)
+
+        self.fig.canvas.flush_events()
+
+    def on_key(self, event):
+        if event.key == 'enter':
+            print("[UI] Enter pressed. Exiting...")
+            self.running = False
+
+    def on_close(self, event):
+        print("[UI] Window closed.")
+        self.running = False
 
 if __name__ == "__main__":
-    plotter = RealTimePlotter()
+    print("=== NI cDAQ-9189 Monitor (Fixed Time Scaling) ===")
+    mapper = SystemMapper(CONFIG_FILE)
+    plotter = RealTimePlotter(mapper)
     
-    print("Plotter running... Press Ctrl+C to stop.")
+    print("Starting... Press 'Enter' or Ctrl+C to stop.")
     try:
-        while True:
-            if not plotter.update():
-                break
+        while plotter.running:
+            plotter.update()
             time.sleep(REFRESH_INTERVAL)
     except KeyboardInterrupt:
-        pass
+        print("\n[UI] Ctrl+C detected.")
     finally:
         plotter.sock.close()
+        plt.close('all')
         print("Closed.")

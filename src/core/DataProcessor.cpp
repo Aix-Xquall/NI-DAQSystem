@@ -63,7 +63,7 @@ namespace Core
 
                 // 1. 格式轉換 (使用工具類別)
                 // 限制 20 點用於 UI 顯示
-                std::string csvPacket = Utils::CsvFormatter::toCsv(chunk, 2);
+                std::string csvPacket = Utils::CsvFormatter::toCsv(chunk, 50);
 
                 // 2. 透過 UDP 發送
                 m_udpSender->send(csvPacket);
