@@ -1,18 +1,18 @@
 #include "core/DataProcessor.hpp"
-#include "utils/CsvFormatter.hpp"
 #include <iostream>
 #include <chrono>
 
 namespace Core
 {
-
     DataProcessor::DataProcessor(std::shared_ptr<Data::SafeQueue<Data::RawDataChunk>> queue,
-                                 const std::string &udpIp, int udpPort)
+                                 const Utils::SystemConfig &config) // [修改] 傳入完整 Config
         : m_queue(queue), m_isRunning(false)
     {
-
         // 初始化 UDP Sender
-        m_udpSender = std::make_unique<Comm::UdpSender>(udpIp, udpPort);
+        m_udpSender = std::make_unique<Comm::UdpSender>(config.udpIp, config.udpPort);
+
+        // [新增] 初始化 DSP Handler
+        m_dspHandler = std::make_unique<DspHandler>(config);
     }
 
     DataProcessor::~DataProcessor()
@@ -25,7 +25,6 @@ namespace Core
         if (m_isRunning)
             return true;
 
-        // 初始化 UDP Socket
         if (!m_udpSender->initialize())
         {
             std::cerr << "[Core] Failed to initialize UDP Sender." << std::endl;
@@ -42,12 +41,9 @@ namespace Core
     {
         if (!m_isRunning)
             return;
-
         m_isRunning = false;
         if (m_workerThread.joinable())
-        {
             m_workerThread.join();
-        }
         std::cout << "[Core] DataProcessor Stopped." << std::endl;
     }
 
@@ -57,23 +53,22 @@ namespace Core
 
         while (m_isRunning)
         {
-            // 從 Queue 取出資料 (Non-blocking try_pop)
             if (m_queue->try_pop(chunk))
             {
+                // [修改] 使用 DSP Handler 處理
+                // 這會回傳多個封包 (因為一個 Task 可能拆成多個 Slot，且包含多個時間點)
+                std::vector<std::string> packets = m_dspHandler->process(chunk);
 
-                // 1. 格式轉換 (使用工具類別)
-                // 限制 20 點用於 UI 顯示
-                std::string csvPacket = Utils::CsvFormatter::toCsv(chunk, 50);
-
-                // 2. 透過 UDP 發送
-                m_udpSender->send(csvPacket);
+                // 逐一發送
+                for (const auto &packet : packets)
+                {
+                    m_udpSender->send(packet);
+                }
             }
             else
             {
-                // 避免 CPU 100%
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         }
     }
-
 }

@@ -1,93 +1,223 @@
 {
-    "system_name": "cDAQ-9189_8Slot_Full",
+    "system_name": "cDAQ-9189_DSP_Architecture",
     "udp_target_ip": "127.0.0.1",
     "udp_target_port": 5005,
     "tasks": [
         {
-            "task_name": "Task_A_HighSpeed_50k",
+            "task_name": "Task_A_HighSpeed",
             "active": true,
             "sample_rate": 500.0,
             "channels": [
                 {
-                    "device_name": "cDAQ1Mod1", "channel_range": "ai0:2",
-                    "model_info": "NI-9232 (Slot 1) - DSA",
+                    "device_name": "cDAQ1Mod1",
+                    "channel_range": "ai0:2",
+                    "model_info": "NI-9232 (Slot 1) - 50k",
                     "active": true,
                     "channel_type": "Voltage_IEPE",
-                    "min_val": -30.0, "max_val": 30.0,
-                    "iepe_config": { "current": 0.004, "coupling": "AC" }
-                },
-                {
-                    "device_name": "cDAQ1Mod2", "channel_range": "ai0:2",
-                    "model_info": "NI-9232 (Slot 2) - DSA",
-                    "active": true,
-                    "channel_type": "Voltage_IEPE",
-                    "min_val": -30.0, "max_val": 30.0,
-                    "iepe_config": { "current": 0.004, "coupling": "AC" }
-                }
-            ]
-        },
-        {
-            "task_name": "Task_B_MediumSpeed_5k",
-            "active": true,
-            "sample_rate": 50.0,
-            "channels": [
-                {
-                    "device_name": "cDAQ1Mod3", "channel_range": "ai0:2",
-                    "model_info": "NI-9230 (Slot 3) - DSA",
-                    "active": true,
-                    "channel_type": "Voltage_IEPE",
-                    "min_val": -30.0, "max_val": 30.0,
-                    "iepe_config": { "current": 0.004, "coupling": "AC" }
-                },
-                {
-                    "device_name": "cDAQ1Mod4", "channel_range": "ai0:2",
-                    "model_info": "NI-9230 (Slot 4) - DSA",
-                    "active": true,
-                    "channel_type": "Voltage_IEPE",
-                    "min_val": -30.0, "max_val": 30.0,
-                    "iepe_config": { "current": 0.004, "coupling": "AC" }
-                },
-                {
-                    "device_name": "cDAQ1Mod5", "channel_range": "ai0:2",
-                    "model_info": "NI-9230 (Slot 5) - DSA",
-                    "active": true,
-                    "channel_type": "Voltage_IEPE",
-                    "min_val": -30.0, "max_val": 30.0,
-                    "iepe_config": { "current": 0.004, "coupling": "AC" }
-                },
-                {
-                    "device_name": "cDAQ1Mod6", "channel_range": "ai0:2",
-                    "model_info": "NI-9235 (Slot 6) - DSA Strain",
-                    "active": true,
-                    "channel_type": "Strain_Bridge",
-                    "min_val": -0.02, "max_val": 0.02,
-                    "strain_config": {
-                        "gage_factor": 2.0, "resistance": 120.0, 
-                        "poisson_ratio": 0.3, "excitation_val": 2.0
+                    "min_val": -30.0,
+                    "max_val": 30.0,
+                    "iepe_config": {
+                        "current": 0.004,
+                        "coupling": "AC"
+                    },
+                    "moving_avg": {
+                        "active": true,
+                        "window_size": 1
+                    },
+                    "fft": {
+                        "active": false,
+                        "window_type": "Hann",
+                        "points": 1024
                     }
                 },
                 {
-                    "device_name": "cDAQ1Mod8", "channel_range": "ai0:3",
-                    "model_info": "NI-9239 (Slot 8) - DSA Voltage",
+                    "device_name": "cDAQ1Mod2",
+                    "channel_range": "ai0:2",
+                    "model_info": "NI-9232 (Slot 2) - 25k",
                     "active": true,
-                    "channel_type": "Voltage",
-                    "min_val": -10.0, "max_val": 10.0,
-                    "comment": "NI-9239 moved here to share Sync Pulse 2. Software downsample if needed.",
-                    "iepe_config": { "current": 0.0, "coupling": "DC" } 
+                    "channel_type": "Voltage_IEPE",
+                    "min_val": -30.0,
+                    "max_val": 30.0,
+                    "iepe_config": {
+                        "current": 0.004,
+                        "coupling": "AC"
+                    },
+                    "moving_avg": {
+                        "active": true,
+                        "window_size": 2
+                    },
+                    "fft": {
+                        "active": false,
+                        "window_type": "Hann",
+                        "points": 1024
+                    }
                 }
             ]
         },
         {
-            "task_name": "Task_C_LowSpeed_10Hz",
+            "task_name": "Task_B_MediumSpeed",
             "active": true,
-            "sample_rate": 20.0,
+            "sample_rate": 1000.0,
+            "comment": "HW Rate 10k. Base for 5k/400/200/10/1 Hz.",
             "channels": [
                 {
-                    "device_name": "cDAQ1Mod7", "channel_range": "ai0:2",
-                    "model_info": "NI-9214 (Slot 7) - Scanned TC",
+                    "device_name": "cDAQ1Mod3",
+                    "channel_range": "ai0:2",
+                    "model_info": "NI-9230 (Slot 3) - 5k",
+                    "active": true,
+                    "channel_type": "Voltage_IEPE",
+                    "min_val": -30.0,
+                    "max_val": 30.0,
+                    "iepe_config": {
+                        "current": 0.004,
+                        "coupling": "AC"
+                    },
+                    "moving_avg": {
+                        "active": true,
+                        "window_size": 2
+                    },
+                    "fft": {
+                        "active": false,
+                        "window_type": "Hann",
+                        "points": 1024
+                    }
+                },
+                {
+                    "device_name": "cDAQ1Mod4",
+                    "channel_range": "ai0:2",
+                    "model_info": "NI-9230 (Slot 4) - 400Hz",
+                    "active": true,
+                    "channel_type": "Voltage_IEPE",
+                    "min_val": -30.0,
+                    "max_val": 30.0,
+                    "iepe_config": {
+                        "current": 0.004,
+                        "coupling": "AC"
+                    },
+                    "moving_avg": {
+                        "active": true,
+                        "window_size": 25
+                    },
+                    "fft": {
+                        "active": false,
+                        "window_type": "Blackman",
+                        "points": 1024
+                    }
+                },
+                {
+                    "device_name": "cDAQ1Mod5",
+                    "channel_range": "ai0:2",
+                    "model_info": "NI-9230 (Slot 5) - 400Hz",
+                    "active": true,
+                    "channel_type": "Voltage_IEPE",
+                    "min_val": -30.0,
+                    "max_val": 30.0,
+                    "iepe_config": {
+                        "current": 0.004,
+                        "coupling": "AC"
+                    },
+                    "moving_avg": {
+                        "active": true,
+                        "window_size": 25
+                    },
+                    "fft": {
+                        "active": false,
+                        "window_type": "Blackman",
+                        "points": 1024
+                    }
+                },
+                {
+                    "device_name": "cDAQ1Mod6",
+                    "channel_range": "ai0:2",
+                    "model_info": "NI-9235 (Slot 6) - 200Hz",
+                    "active": true,
+                    "channel_type": "Strain_Bridge",
+                    "min_val": -0.02,
+                    "max_val": 0.02,
+                    "strain_config": {
+                        "gage_factor": 2.0,
+                        "resistance": 120.0,
+                        "poisson_ratio": 0.3,
+                        "excitation_val": 2.0
+                    },
+                    "moving_avg": {
+                        "active": true,
+                        "window_size": 50
+                    },
+                    "fft": {
+                        "active": false,
+                        "window_type": "Hann",
+                        "points": 512
+                    }
+                },
+                {
+                    "device_name": "cDAQ1Mod8",
+                    "channel_range": "ai0:1",
+                    "model_info": "NI-9239 (Slot 8 A) - 10Hz",
+                    "active": true,
+                    "channel_type": "Voltage",
+                    "min_val": -10.0,
+                    "max_val": 10.0,
+                    "iepe_config": {
+                        "current": 0.0,
+                        "coupling": "DC"
+                    },
+                    "moving_avg": {
+                        "active": true,
+                        "window_size": 100
+                    },
+                    "fft": {
+                        "active": false,
+                        "window_type": "Hann",
+                        "points": 256
+                    }
+                },
+                {
+                    "device_name": "cDAQ1Mod8",
+                    "channel_range": "ai2:3",
+                    "model_info": "NI-9239 (Slot 8 B) - 1Hz",
+                    "active": true,
+                    "channel_type": "Voltage",
+                    "min_val": -10.0,
+                    "max_val": 10.0,
+                    "iepe_config": {
+                        "current": 0.0,
+                        "coupling": "DC"
+                    },
+                    "moving_avg": {
+                        "active": true,
+                        "window_size": 1000
+                    },
+                    "fft": {
+                        "active": false,
+                        "window_type": "Hann",
+                        "points": 256
+                    }
+                }
+            ]
+        },
+        {
+            "task_name": "Task_C_LowSpeed",
+            "active": true,
+            "sample_rate": 10.0,
+            "channels": [
+                {
+                    "device_name": "cDAQ1Mod7",
+                    "channel_range": "ai0:2",
+                    "model_info": "NI-9214 (Slot 7) - 10Hz",
                     "active": true,
                     "channel_type": "Thermocouple_K",
-                    "min_val": 0.0, "max_val": 150.0
+                    "min_val": 0.0,
+                    "max_val": 150.0,
+                    "moving_avg": {
+                        "active": true,
+                        "window_size": 1
+                    },
+                    "fft": {
+                        "active": false,
+                        "window_type": "Hann",
+                        "points": 128
+                    }
                 }
             ]
         }
