@@ -4,6 +4,7 @@
 #include <thread>
 #include <atomic>
 #include <memory>
+#include "daq/IDaqDevice.hpp"
 #include "NIDAQmx.h"
 #include "data/DataTypes.hpp"
 #include "data/SafeQueue.hpp"
@@ -11,33 +12,32 @@
 
 namespace DAQ
 {
-
-    class DaqDevice
+    // 繼承 IDaqDevice
+    class DaqDevice : public IDaqDevice
     {
     public:
         // 建構子：傳入共用的 Queue 指標、裝置名稱 (如 "cDAQ1Mod1") 取樣率
 
         // 改為傳入 TaskConfig
-        DaqDevice(const Utils::TaskConfig& config, 
+        DaqDevice(const Utils::TaskConfig &config,
                   std::shared_ptr<Data::SafeQueue<Data::RawDataChunk>> queue);
-        ~DaqDevice();
+        ~DaqDevice() override;
 
         // 初始化 Task (設定通道、時脈)
-        bool initialize();
+        bool initialize() override;
 
         // 開始擷取
-        bool start();
+        bool start() override;
 
         // 停止擷取
-        bool stop();
-
+        bool stop() override;
 
     private:
         // NI-DAQmx Task Handle (這是核心控制代碼)
         TaskHandle m_taskHandle;
         // 儲存設定參數
         Utils::TaskConfig m_config; // 儲存 Task 設定
-        
+
         bool m_isInitialized;
 
         // 執行緒控制

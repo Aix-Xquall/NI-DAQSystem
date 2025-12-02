@@ -6,7 +6,7 @@ import time
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.widgets import RadioButtons
+from matplotlib.widgets import Button
 from collections import deque
 
 # ================= 設定區 =================
@@ -14,8 +14,8 @@ CONFIG_FILE = "DAQ_Settings.json"
 UDP_IP = "0.0.0.0"       # 監聽所有網卡
 UDP_PORT = 5005
 BUFFER_SIZE = 65536      # 64KB UDP Buffer
-MAX_FPS = 60             # UI 更新率上限
-PLOT_DISPLAY_LIMIT = 1000 # 繪圖優化：畫面上最多只顯示 5000 點 (避免卡頓)
+MAX_FPS = 30             # UI 更新率上限
+PLOT_DISPLAY_LIMIT = 50000 # 繪圖優化：畫面上最多只顯示 50000 點
 MAX_BUFFER_SEC = 20.0    # 記憶體中保留最長 20 秒的歷史數據
 # ==========================================
 
@@ -75,13 +75,11 @@ class SystemMapper:
                         self.slot_rates[current_slot_idx] = eff_rate # 初始頻率
                     else:
                         # 若 Slot 已存在 (例如 Slot 8 有 A/B 兩組)，取較高的頻率作為主頻率
-                        # 因為 UDP 發送速度取決於該 Slot 最快的通道
                         current_slot_idx = self.device_map[dev_name]
                         if eff_rate > self.slot_rates[current_slot_idx]:
                             self.slot_rates[current_slot_idx] = eff_rate
 
-                    # 列印表格資訊 (只印出每次發現的新資訊，避免重複太多)
-                    # 這裡為了簡化，直接印出當前通道的計算結果
+                    # 列印表格資訊
                     print(f"{current_slot_idx+1:<8} {dev_name:<12} {task_rate:<10.1f} {window_size:<8} {eff_rate:<10.2f} Hz")
 
             print("-" * 60)
@@ -99,21 +97,23 @@ class RealTimePlotter:
         # Queue 用於 Thread 間通訊
         self.packet_queue = queue.Queue()
         
-        # UI 狀態
-        self.time_window = 3.0 # 預設 3 秒
+        # UI 狀態 - 預設 100ms (0.1s)
+        self.time_window = 0.1 
         
         # 資料儲存結構: buffers[slot_idx][ch_index] = deque()
-        # 初始化 Deque 大小：根據 Max Buffer Sec 計算，確保足夠容納
         self.buffers = [{} for _ in range(len(self.mapper.slot_titles))]
         
-        # 為了效能，我們需要知道每個 Slot 的最大 Buffer 長度
-        # max_len = eff_rate * MAX_BUFFER_SEC
+        # 計算每個 Slot 的最大 Buffer 長度
         self.slot_max_lens = {}
         for slot_idx, rate in self.mapper.slot_rates.items():
             self.slot_max_lens[slot_idx] = int(rate * MAX_BUFFER_SEC) + 100
 
         # 繪圖物件快取
         self.lines = [{} for _ in range(len(self.mapper.slot_titles))]
+        
+        # 按鈕物件快取
+        self.btns = []
+        self.btn_axes = []
         
         self.init_plot()
         
@@ -143,21 +143,70 @@ class RealTimePlotter:
             else:
                 ax.set_visible(False)
 
-        # Radio Buttons
-        ax_radio = plt.axes([0.02, 0.94, 0.12, 0.05], facecolor='#e6e6e6')
-        self.radio = RadioButtons(ax_radio, ('3s', '5s', '10s'), active=0)
-        self.radio.on_clicked(self.change_window)
+        # --- 時間選擇按鈕 (上方水平排列) ---
+        labels = ['10ms', '100ms', '1000ms', '5S', '10S']
+        
+        n_btns = len(labels)
+        btn_w = 0.08  # 按鈕寬度
+        btn_h = 0.04  # 按鈕高度
+        gap = 0.01    # 間距
+        
+        total_w = n_btns * btn_w + (n_btns - 1) * gap
+        start_x = 0.5 - (total_w / 2)
+        y_pos = 0.94
+        
+        self.btns = []
+        self.btn_axes = []
+
+        for i, label in enumerate(labels):
+            x = start_x + i * (btn_w + gap)
+            ax_btn = plt.axes([x, y_pos, btn_w, btn_h])
+            
+            # 建立按鈕
+            btn = Button(ax_btn, label, color='0.9', hovercolor='0.8')
+            
+            # [修改] 預設選中 100ms，顯示為橘色
+            if label == '100ms':
+                btn.color = 'orange'
+                ax_btn.set_facecolor('orange')
+            
+            # 綁定點擊事件
+            btn.on_clicked(lambda event, l=label, b=btn: self.change_window(l, b))
+            
+            self.btns.append(btn)
+            self.btn_axes.append(ax_btn)
 
         self.fig.canvas.mpl_connect('key_press_event', self.on_key)
         self.fig.canvas.mpl_connect('close_event', self.on_close)
 
-    def change_window(self, label):
-        self.time_window = float(label.replace('s', ''))
-        # 立即更新 X 軸範圍
+    def change_window(self, label, clicked_btn):
+        # 解析時間標籤
+        label_lower = label.lower()
+        val = 0.1
+        
+        if 'ms' in label_lower:
+            val = float(label_lower.replace('ms', '')) / 1000.0
+        elif 's' in label_lower:
+            val = float(label_lower.replace('s', ''))
+        
+        self.time_window = val
+        print(f"[UI] Time Window set to: {self.time_window}s")
+        
+        # [修改] 更新按鈕視覺狀態：選中者橘色，其餘灰色
+        for btn in self.btns:
+            if btn == clicked_btn:
+                btn.color = 'orange'
+                btn.ax.set_facecolor('orange')
+            else:
+                btn.color = '0.9'
+                btn.ax.set_facecolor('0.9')
+        
+        self.fig.canvas.draw_idle()
+        
+        # 立即更新所有圖表的 X 軸範圍
         for ax in self.axes:
             if ax.get_visible():
                 ax.set_xlim(-self.time_window, 0)
-        print(f"[UI] Time Window set to: {self.time_window}s")
 
     def udp_worker(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -231,7 +280,7 @@ class RealTimePlotter:
                 # 計算「當前時間視窗」需要顯示多少點
                 points_needed = int(eff_rate * self.time_window)
                 
-                # 若計算出的點數太少 (剛啟動時)，至少給一點緩衝
+                # 若計算出的點數太少 (剛啟動時或視窗極小)，至少給一點緩衝
                 if points_needed < 10: points_needed = 10
 
                 has_update = False
@@ -241,28 +290,23 @@ class RealTimePlotter:
                     has_update = True
                     
                     # --- 關鍵優化：智慧取樣 (Downsampling) ---
-                    # 1. 將 deque 轉為 list (這是一次性成本，但在 Python 很快)
                     full_data = list(data_deque)
                     
-                    # 2. 只取出需要的歷史長度 (Slicing)
-                    # 取最後 points_needed 個點
+                    # 只取出需要的歷史長度
                     if len(full_data) > points_needed:
                         display_data = full_data[-points_needed:]
                     else:
                         display_data = full_data
                     
-                    # 3. 檢查是否超過顯示上限 (例如 5000 點)
-                    # 如果超過，則進行間隔取樣 (例如 10000 點 -> 取每 2 點顯示 1 點)
+                    # 檢查是否超過顯示上限，進行降頻
                     num_points = len(display_data)
                     step = 1
                     if num_points > PLOT_DISPLAY_LIMIT:
                         step = num_points // PLOT_DISPLAY_LIMIT + 1
                         display_data = display_data[::step]
-                        num_points = len(display_data) # 更新點數
+                        num_points = len(display_data)
 
-                    # 4. 生成對應的 X 軸
-                    # 注意：這裡的 linspace 必須對應「被 Slice 後的時間長度」
-                    # 時間範圍是 [ - (實際點數 * step / rate), 0 ]
+                    # 生成對應的 X 軸
                     actual_duration = (num_points * step) / eff_rate
                     x_data = np.linspace(-actual_duration, 0, num_points)
                     

@@ -1,12 +1,19 @@
 {
     "system_name": "cDAQ-9189_DSP_Architecture",
     "udp_target_ip": "127.0.0.1",
+    "daq_simulation_settings": {
+        "active": true,
+        "base_frequency": 1000.0,
+        "frequency_step_percent": 20.0,
+        "amplitude": 1.0,
+        "noise_percent": 5.0
+    },
     "udp_target_port": 5005,
     "tasks": [
         {
             "task_name": "Task_A_HighSpeed",
             "active": true,
-            "sample_rate": 500.0,
+            "sample_rate": 50000.0,
             "channels": [
                 {
                     "device_name": "cDAQ1Mod1",
@@ -22,7 +29,7 @@
                     },
                     "moving_avg": {
                         "active": true,
-                        "window_size": 1
+                        "window_size": 10
                     },
                     "fft": {
                         "active": false,
@@ -44,7 +51,7 @@
                     },
                     "moving_avg": {
                         "active": true,
-                        "window_size": 2
+                        "window_size": 20
                     },
                     "fft": {
                         "active": false,
@@ -56,7 +63,7 @@
         },
         {
             "task_name": "Task_B_MediumSpeed",
-            "active": true,
+            "active": false,
             "sample_rate": 1000.0,
             "comment": "HW Rate 10k. Base for 5k/400/200/10/1 Hz.",
             "channels": [

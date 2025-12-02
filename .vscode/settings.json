@@ -83,6 +83,7 @@
         "codecvt": "cpp",
         "map": "cpp",
         "cinttypes": "cpp",
-        "valarray": "cpp"
+        "valarray": "cpp",
+        "xtree": "cpp"
     }
 }

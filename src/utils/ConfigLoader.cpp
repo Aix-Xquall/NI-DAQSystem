@@ -30,6 +30,22 @@ namespace Utils
             sysConfig.udpIp = j.value("udp_target_ip", "127.0.0.1");
             sysConfig.udpPort = j.value("udp_target_port", 5005);
 
+            // 讀取 daq_simulation_settings 參數
+            if (j.contains("daq_simulation_settings"))
+            {
+                auto simJson = j["daq_simulation_settings"];
+                sysConfig.daqSimConfig.active = simJson.value("active", false);
+                sysConfig.daqSimConfig.baseFrequency = simJson.value("base_frequency", 10.0);
+                sysConfig.daqSimConfig.frequencyStepPercent = simJson.value("frequency_step", 10.0);
+                sysConfig.daqSimConfig.amplitude = simJson.value("amplitude", 5.0);
+                sysConfig.daqSimConfig.noisePercent = simJson.value("noise_percent", 0.0);
+            }
+            else
+            {
+                // 若 JSON 沒寫，給預設值 (關閉模擬)
+                sysConfig.daqSimConfig = {false, 10.0, 10.0, 5.0, 0.0};
+            }
+
             if (j.contains("tasks"))
             {
                 for (const auto &tItem : j["tasks"])

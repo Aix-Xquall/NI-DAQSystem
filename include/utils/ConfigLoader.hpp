@@ -5,6 +5,16 @@
 namespace Utils
 {
 
+    // 結構名稱更新為 DaqSimulationSettings，對應 JSON 鍵值
+    struct DaqSimulationSettings
+    {
+        bool active;                 // 是否啟用模擬
+        double baseFrequency;        // 基礎頻率 (Hz)
+        double frequencyStepPercent; // 頻率累加 (Hz)
+        double amplitude;            // 振幅 (V)
+        double noisePercent;         // 雜訊百分比 (0~100)
+    };
+
     struct IepeSettings
     {
         double current;
@@ -66,6 +76,7 @@ namespace Utils
     struct SystemConfig
     {
         std::string systemName;
+        DaqSimulationSettings daqSimConfig;
         std::string udpIp;
         int udpPort;
         std::vector<TaskConfig> taskConfigs;
