@@ -144,7 +144,7 @@ class RealTimePlotter:
                 ax.set_visible(False)
 
         # --- 時間選擇按鈕 (上方水平排列) ---
-        labels = ['10ms', '100ms', '1000ms', '5S', '10S']
+        labels = ['10ms', '100ms', '500ms', '1000ms', '5S', '10S']
         
         n_btns = len(labels)
         btn_w = 0.08  # 按鈕寬度

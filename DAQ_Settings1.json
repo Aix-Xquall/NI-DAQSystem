@@ -16,7 +16,7 @@
             "sample_rate": 50000.0,
             "channels": [
                 {
-                    "device_name": "cDAQ9189-1C5F11FMod1",
+                    "device_name": "cDAQ1Mod1",
                     "channel_range": "ai0:2",
                     "model_info": "NI-9232 (Slot 1) - 50k",
                     "active": true,
@@ -29,20 +29,19 @@
                     },
                     "moving_avg": {
                         "active": true,
-                        "window_size": 100
+                        "window_size": 10
                     },
                     "fft": {
                         "active": true,
                         "window_type": "Hann",
-                        "points": 4096,
-                        "overlap_percent": 25.0
+                        "points": 4096
                     }
                 },
                 {
-                    "device_name": "cDAQ9189-1C5F11FMod2",
+                    "device_name": "cDAQ1Mod2",
                     "channel_range": "ai0:2",
                     "model_info": "NI-9232 (Slot 2) - 25k",
-                    "active": false,
+                    "active": true,
                     "channel_type": "Voltage_IEPE",
                     "min_val": -30.0,
                     "max_val": 30.0,
@@ -52,14 +51,12 @@
                     },
                     "moving_avg": {
                         "active": true,
-                        "window_size": 200
+                        "window_size": 20
                     },
                     "fft": {
                         "active": true,
                         "window_type": "Hann",
-                        "points": 4096,
-                        "overlap_percent": 25.0
-                        
+                        "points": 4096
                     }
                 }
             ]
@@ -71,10 +68,10 @@
             "comment": "HW Rate 10k. Base for 5k/400/200/10/1 Hz.",
             "channels": [
                 {
-                    "device_name": "cDAQ9189-1C5F11FMod3",
+                    "device_name": "cDAQ1Mod3",
                     "channel_range": "ai0:2",
                     "model_info": "NI-9230 (Slot 3) - 5k",
-                    "active": false,
+                    "active": true,
                     "channel_type": "Voltage_IEPE",
                     "min_val": -30.0,
                     "max_val": 30.0,
@@ -89,15 +86,14 @@
                     "fft": {
                         "active": true,
                         "window_type": "Hann",
-                        "points": 1024,
-                        "overlap_percent": 25.0
+                        "points": 1024
                     }
                 },
                 {
-                    "device_name": "cDAQ9189-1C5F11FMod4",
+                    "device_name": "cDAQ1Mod4",
                     "channel_range": "ai0:2",
                     "model_info": "NI-9230 (Slot 4) - 400Hz",
-                    "active": false,
+                    "active": true,
                     "channel_type": "Voltage_IEPE",
                     "min_val": -30.0,
                     "max_val": 30.0,
@@ -112,15 +108,14 @@
                     "fft": {
                         "active": true,
                         "window_type": "Blackman",
-                        "points": 1024,
-                        "overlap_percent": 25.0
+                        "points": 1024
                     }
                 },
                 {
-                    "device_name": "cDAQ9189-1C5F11FMod5",
+                    "device_name": "cDAQ1Mod5",
                     "channel_range": "ai0:2",
                     "model_info": "NI-9230 (Slot 5) - 400Hz",
-                    "active": false,
+                    "active": true,
                     "channel_type": "Voltage_IEPE",
                     "min_val": -30.0,
                     "max_val": 30.0,
@@ -135,13 +130,12 @@
                     "fft": {
                         "active": true,
                         "window_type": "Blackman",
-                        "points": 1024,
-                        "overlap_percent": 25.0
+                        "points": 1024
                     }
                 },
                 {
-                    "device_name": "cDAQ9189-1C5F11FMod6",
-                    "channel_range": "ai0:1",
+                    "device_name": "cDAQ1Mod6",
+                    "channel_range": "ai0:2",
                     "model_info": "NI-9235 (Slot 6) - 200Hz",
                     "active": true,
                     "channel_type": "Strain_Bridge",
@@ -160,12 +154,11 @@
                     "fft": {
                         "active": false,
                         "window_type": "Hann",
-                        "points": 512,
-                        "overlap_percent": 25.0
+                        "points": 512
                     }
                 },
                 {
-                    "device_name": "cDAQ9189-1C5F11FMod8",
+                    "device_name": "cDAQ1Mod8",
                     "channel_range": "ai0:1",
                     "model_info": "NI-9239 (Slot 8 A) - 10Hz",
                     "active": true,
@@ -178,17 +171,16 @@
                     },
                     "moving_avg": {
                         "active": true,
-                        "window_size": 1
+                        "window_size": 4
                     },
                     "fft": {
                         "active": false,
                         "window_type": "Hann",
-                        "points": 256,
-                        "overlap_percent": 25.0
+                        "points": 256
                     }
                 },
                 {
-                    "device_name": "cDAQ9189-1C5F11FMod8",
+                    "device_name": "cDAQ1Mod8",
                     "channel_range": "ai2:3",
                     "model_info": "NI-9239 (Slot 8 B) - 1Hz",
                     "active": true,
@@ -201,13 +193,12 @@
                     },
                     "moving_avg": {
                         "active": true,
-                        "window_size": 1
+                        "window_size": 10
                     },
                     "fft": {
                         "active": false,
                         "window_type": "Hann",
-                        "points": 256,
-                        "overlap_percent": 25.0
+                        "points": 256
                     }
                 }
             ]
@@ -218,8 +209,8 @@
             "sample_rate": 10.0,
             "channels": [
                 {
-                    "device_name": "cDAQ9189-1C5F11FMod7",
-                    "channel_range": "ai1",
+                    "device_name": "cDAQ1Mod7",
+                    "channel_range": "ai0:2",
                     "model_info": "NI-9214 (Slot 7) - 10Hz",
                     "active": true,
                     "channel_type": "Thermocouple_K",
@@ -232,8 +223,7 @@
                     "fft": {
                         "active": false,
                         "window_type": "Hann",
-                        "points": 128,
-                        "overlap_percent": 25.0
+                        "points": 128
                     }
                 }
             ]
