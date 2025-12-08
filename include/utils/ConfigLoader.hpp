@@ -42,6 +42,7 @@ namespace Utils
         bool active;
         std::string windowType; // e.g., "Hann", "Blackman"
         int points;             // e.g., 1024
+        double overlapPercent;  // [新增] Overlap 百分比 (0.0 ~ 99.0)
     };
 
     struct ChannelConfig

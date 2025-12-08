@@ -36,9 +36,9 @@ namespace Utils
                 auto simJson = j["daq_simulation_settings"];
                 sysConfig.daqSimConfig.active = simJson.value("active", false);
                 sysConfig.daqSimConfig.baseFrequency = simJson.value("base_frequency", 10.0);
-                sysConfig.daqSimConfig.frequencyStepPercent = simJson.value("frequency_step", 10.0);
+                sysConfig.daqSimConfig.frequencyStepPercent = simJson.value("frequency_step_percent", 10.0);
                 sysConfig.daqSimConfig.amplitude = simJson.value("amplitude", 5.0);
-                sysConfig.daqSimConfig.noisePercent = simJson.value("noise_percent", 0.0);
+                sysConfig.daqSimConfig.noisePercent = simJson.value("noise_percent", 1.0);
             }
             else
             {
@@ -118,6 +118,13 @@ namespace Utils
                                 ch.fftSettings.active = fftItem.value("active", false);
                                 ch.fftSettings.windowType = fftItem.value("window_type", "Hann");
                                 ch.fftSettings.points = fftItem.value("points", 1024);
+                                // [新增] 讀取 overlap
+                                ch.fftSettings.overlapPercent = fftItem.value("overlap_percent", 25.0);
+                                // 防呆限制
+                                if (ch.fftSettings.overlapPercent < 0.0)
+                                    ch.fftSettings.overlapPercent = 0.0;
+                                if (ch.fftSettings.overlapPercent >= 100.0)
+                                    ch.fftSettings.overlapPercent = 99.0;
                             }
                             else
                             {

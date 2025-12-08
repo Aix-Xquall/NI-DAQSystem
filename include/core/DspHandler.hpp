@@ -7,68 +7,68 @@
 #include "utils/ConfigLoader.hpp"
 #include "data/DataTypes.hpp"
 #include "dsp/Downsampler.hpp"
+#include "dsp/FftBuffer.hpp"
+#include "dsp/FftTransformer.hpp"
 
 namespace Core
 {
-
     /**
-     * @brief Slot 通道狀態管理
-     * 包含該通道的降頻器以及 "Sample and Hold" 所需的最後數值
+     * @brief 通道狀態
+     * 維護每個通道的降頻、FFT 緩衝與最新數值
      */
     struct ChannelState
     {
-        std::string label;                             // 通道標籤 (e.g., "ai0")
-        std::unique_ptr<DSP::Downsampler> downsampler; // 專屬降頻器
-        double lastValue;                              // S&H: 上一次的有效輸出值
-        bool hasValue;                                 // 是否已有初始值
-        bool isMaster;                                 // 是否為該 Slot 的主頻率通道 (決定輸出時機)
+        std::string label;                             
+        std::unique_ptr<DSP::Downsampler> downsampler; 
+        
+        // --- 時域相關 ---
+        double lastValue;   // Sample & Hold: 儲存降頻後的最新數值
+        bool hasValue;      // 標記是否已收到至少一筆數據
+        
+        // --- FFT 相關 ---
+        bool fftActive;
+        std::unique_ptr<DSP::FftBuffer> fftBuffer;
+        std::unique_ptr<DSP::FftTransformer> fftTransformer;
+        
+        std::vector<double> lastFftResult; // 儲存最新的 FFT Magnitude
+        bool hasNewFft;                    // 標記是否有新的 FFT 計算完成
+        
+        bool isMaster; // 是否為主通道 (負責觸發 Slot 打包)
     };
 
     /**
      * @brief Slot 處理單元
-     * 代表一個實體的 Slot (例如 Slot 8)，包含多個通道
      */
     struct SlotBundle
     {
-        std::string slotName;               // 用於 CSV Header (e.g., "Slot_1_NI-9232")
-        std::vector<ChannelState> channels; // 該 Slot 底下的所有通道
-        int masterChannelIdx;               // 主通道索引 (通常是頻率最高的通道)
-
-        // 暫存輸出的 CSV 字串列表 (等待 UDP 發送)
-        std::vector<std::string> pendingPackets;
+        std::string slotName;               
+        std::vector<ChannelState> channels; 
+        int masterChannelIdx;
+        
+        // Slot 層級參數
+        double effectiveRate; // MA 後的有效取樣率
     };
 
     class DspHandler
     {
     public:
-        // 初始化：依據 SystemConfig 建立 Slot 映射表
         explicit DspHandler(const Utils::SystemConfig &config);
-
+        
         /**
-         * @brief 處理原始數據塊 (核心函式)
-         * 1. 解交錯 (De-interleave)
-         * 2. 降頻運算
-         * 3. Sample & Hold 補值
-         * 4. 產生 CSV
-         * @param chunk 來自 DAQ 的原始數據
-         * @return std::vector<std::string> 準備發送的 CSV 封包列表 (每個 Slot 獨立)
+         * @brief 處理原始數據，回傳需要發送的 UDP 封包列表
+         * 可能包含 "時域封包" 與 "頻域封包"
          */
         std::vector<std::string> process(const Data::RawDataChunk &chunk);
 
     private:
-        // 映射表: TaskName -> 該 Task 包含哪些 SlotBundle
-        // 一個 Task (如 Task_B) 可能包含多個 Slots (Slot 3,4,5...)
-        // 為了快速查找，我們使用 TaskName 作為 Key
         struct TaskMap
         {
-            std::vector<int> channelToSlotIdx;              // 原始通道索引 -> 對應 slots 陣列中的索引
-            std::vector<int> channelToChIdx;                // 原始通道索引 -> 對應 SlotBundle 內部的 channel 索引
-            std::vector<std::shared_ptr<SlotBundle>> slots; // 該 Task 涉及的所有 Slot 物件
+            std::vector<int> channelToSlotIdx;              
+            std::vector<int> channelToChIdx;                
+            std::vector<std::shared_ptr<SlotBundle>> slots; 
         };
 
         std::map<std::string, TaskMap> m_taskMappings;
-
-        // 儲存所有的 SlotBundle 實體 (擁有權)
         std::vector<std::shared_ptr<SlotBundle>> m_allSlots;
     };
 }
